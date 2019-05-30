@@ -1,4 +1,5 @@
 import os.path
+import datetime
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -9,8 +10,10 @@ from sklearn.preprocessing import LabelBinarizer
 width = 64
 height = 64
 
-log_Summary = './Train_Graphs_Logs/summary.txt'
-img_model = './Train_Graphs_Logs/model.png'
+now = datetime.datetime.now()
+
+log_Summary = './Train_Graphs_Logs/summary_{}-{}.txt'.format(now.hour, now.minute)
+img_model = './Train_Graphs_Logs/model_{}-{}.png'.format(now.hour, now.minute)
 graph_dir = './Train_Graphs_Logs'
 
 def plotGraph(hist, epochs):
@@ -19,29 +22,31 @@ def plotGraph(hist, epochs):
   plt.style.use("ggplot")
   plt.figure()
   plt.plot(np.arange(0, epochs), hist.history["loss"], label="loss")
-  plt.savefig("./Train_Graphs_Logs/Loss.png")
+  plt.savefig("./Train_Graphs_Logs/Loss_epoch:{}_{}-{}.png".format(epochs, now.hour, now.minute))
   plt.plot(np.arange(0, epochs), hist.history["acc"], label="acc")
-  plt.savefig("./Train_Graphs_Logs/Acc.png")
+  plt.savefig("./Train_Graphs_Logs/Acc_epoch:{}_{}-{}.png".format(epochs, now.hour, now.minute))
   plt.plot(np.arange(0, epochs), hist.history["val_loss"], label="val_loss")
-  plt.savefig("./Train_Graphs_Logs/Val_Loss.png")
+  plt.savefig("./Train_Graphs_Logs/Val_Loss_epoch:{}_{}-{}.png".format(epochs, now.hour, now.minute))
   plt.plot(np.arange(0, epochs), hist.history["val_acc"], label="val_acc")
-  plt.savefig("./Train_Graphs_Logs/Val_Acc.png")
+  plt.savefig("./Train_Graphs_Logs/Val_Acc_epoch:{}_{}-{}.png".format(epochs, now.hour, now.minute))
   plt.title("Training, regression and classification Loss on Dataset")
   plt.xlabel("Epoch #")
   plt.ylabel("Loss/Training Loss/classification Loss")
   plt.legend(loc="lower left")
-  plt.savefig("./Train_Graphs_Logs/training, regression and classification Loss.png")
+  plt.savefig("./Train_Graphs_Logs/training, regression and classification Loss_epoch:{}_{}-{}.png".format(epochs, now.hour, now.minute))
   
   print(hist.history)
   
 def trainModel():
 
   # CSV that contains images to train
-  train = pd.read_csv('../image2csv/output/train_lucaslb.csv')
+  train = pd.read_csv('../image2csv/output/dataset_train.csv')
 
   train.head()
   labels = train['label'].values
   unique_val = np.array(labels)
+  
+  unique_classes = np.unique(np.array(labels))
 
   plt.figure(figsize = (18,8))
   sns.countplot(x =labels)
@@ -51,7 +56,7 @@ def trainModel():
   images = train.values
   images = np.array([i.flatten() for i in images])
 
-  # Transforms labels into an array of classes (24 classes) per 8566 rows. The 0 does not belong to the classes, 1 belongs to the class
+  # Transforms labels into an array of classes (XX classes) per (width*height) rows. The 0 does not belong to the classes, 1 belongs to the class
   label_binrizer = LabelBinarizer()
   labels = label_binrizer.fit_transform(labels)
 
@@ -64,12 +69,13 @@ def trainModel():
   from keras.utils import plot_model
   from keras.models import Sequential
   from keras.callbacks import ModelCheckpoint
+  from keras.callbacks import EarlyStopping
   from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout
-  batch_size = 100
+  batch_size = 200
   # Number of classes of network
-  num_classes = 3
+  num_classes = len(unique_classes)
   # Defines the epochs to train the network
-  epochs = 50
+  epochs = 500
   x_train = x_train / 255
   x_test = x_test / 255
   x_train = x_train.reshape(x_train.shape[0], width, height, 1)
@@ -113,14 +119,19 @@ def trainModel():
   model.compile(loss = keras.losses.categorical_crossentropy, optimizer=keras.optimizers.Adam(),
                         metrics=['accuracy'])
 
-  checkpointer = ModelCheckpoint('model_lucaslb.h5', save_best_only=True, monitor='val_loss', mode='min')
+  checkpointer = ModelCheckpoint('model_epoch:{}_batch:{}_{}-{}.h5'.format(epochs, batch_size, now.hour, now.minute), save_best_only=True, monitor='val_loss', mode='min')
+  # Stop train when val_loss doesn't increase for 10 epochs
+  earlyStopping = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=20)
 						
   # Train the model
   #hist = model.fit(x_train, y_train, validation_data = (x_test, y_test), epochs=epochs, batch_size=batch_size)
-  hist = model.fit(x_train, y_train, validation_split=0.25, callbacks=[checkpointer], epochs=epochs, batch_size=batch_size)
+  hist = model.fit(x_train, y_train, validation_split=0.20, callbacks=[checkpointer, earlyStopping], epochs=epochs, batch_size=batch_size)
+  
+  # Lenght of loss tell me on which epoch earlyStopping stoped
+  n_epochs_trained = len(hist.history['loss'])
   
   # Plot and save Graphs
-  plotGraph(hist, epochs)
+  plotGraph(hist, n_epochs_trained)
   
   # Evaluate the model
   scores = model.evaluate(x_test, y_test)
